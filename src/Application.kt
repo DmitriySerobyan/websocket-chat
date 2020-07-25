@@ -10,8 +10,10 @@ import io.ktor.server.engine.embeddedServer
 import io.ktor.server.netty.Netty
 import io.ktor.websocket.WebSockets
 import io.ktor.websocket.webSocket
+import kotlinx.coroutines.channels.ClosedReceiveChannelException
 import java.time.Duration
 import java.util.*
+import java.util.concurrent.CancellationException
 import kotlin.collections.LinkedHashSet
 
 fun main() {
@@ -50,11 +52,16 @@ fun Application.module() {
             wsConnections += this
             try {
                 send(Frame.Text("you joined"))
+                for (wsConnection in wsConnections.toList()) {
+                    if (wsConnection != this) {
+                        wsConnection.outgoing.send(Frame.Text("client joined"))
+                    }
+                }
                 while (true) {
                     when (val frame = incoming.receive()) {
                         is Frame.Text -> {
                             val text = frame.readText()
-                            for (wsConnection in wsConnections) {
+                            for (wsConnection in wsConnections.toList()) {
                                 if (wsConnection != this) {
                                     wsConnection.outgoing.send(Frame.Text(text))
                                 }
@@ -62,8 +69,13 @@ fun Application.module() {
                         }
                     }
                 }
+            } catch (_: CancellationException) {
+            } catch (_: ClosedReceiveChannelException) {
             } finally {
                 wsConnections -= this
+                for (wsConnection in wsConnections.toList()) {
+                    wsConnection.outgoing.send(Frame.Text("client left"))
+                }
             }
         }
     }

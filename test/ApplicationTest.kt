@@ -8,10 +8,10 @@ import io.ktor.http.cio.websocket.Frame
 import io.ktor.http.cio.websocket.readText
 import io.ktor.server.testing.handleRequest
 import io.ktor.server.testing.withTestApplication
-import kotlinx.coroutines.Dispatchers
-import kotlinx.coroutines.launch
-import kotlinx.coroutines.runBlocking
+import kotlinx.coroutines.*
+import java.util.*
 import java.util.concurrent.ConcurrentHashMap
+import kotlin.random.Random
 
 class ApplicationTest : StringSpec({
 
@@ -43,7 +43,7 @@ class ApplicationTest : StringSpec({
         withTestApplication({ module() }) {
             val clientCount = 5
             val oneClientSendMessageCount = 10
-            val oneClientReceiveMessageCount = (clientCount - 1) * oneClientSendMessageCount + 1
+            val oneClientReceiveMessageCount = (clientCount - 1) * oneClientSendMessageCount
             val latch = CoroutinesLatch(clientCount)
             val messages = ConcurrentHashMap<Int, MutableList<String>>()
             runBlocking(Dispatchers.IO) {
@@ -57,12 +57,14 @@ class ApplicationTest : StringSpec({
                                 launch {
                                     for (frame in incoming) {
                                         if (frame is Frame.Text) {
-                                            val text = frame.readText()
-                                            messages[clientNumber]!!.add(text)
-                                        }
-                                        receiveMessageCount++
-                                        if (receiveMessageCount >= oneClientReceiveMessageCount) {
-                                            break
+                                            val message = frame.readText()
+                                            if ("message" in message) {
+                                                messages[clientNumber]!!.add(message)
+                                                receiveMessageCount++
+                                                if (receiveMessageCount >= oneClientReceiveMessageCount) {
+                                                    break
+                                                }
+                                            }
                                         }
                                     }
                                 }
@@ -91,12 +93,51 @@ class ApplicationTest : StringSpec({
                         text = messageNumber.toString()
                     )
                 }
-            }.flatten() + "you joined"
+            }.flatten()
 
             messages.forEach { (clientNumber, clientMessages) ->
                 clientMessages shouldHaveSize oneClientReceiveMessageCount
                 val clientExpectedMessages = allExpectedMessages.filter { "client №$clientNumber:" !in it }
                 clientMessages shouldContainExactlyInAnyOrder clientExpectedMessages
+            }
+        }
+    }
+
+    "!:ws/chat client left chat" {
+        withTestApplication({ module() }) {
+            val clientCount = 5
+            runBlocking(Dispatchers.IO) {
+                repeat(clientCount) { clientNumber ->
+                    launch {
+                        handleWebSocketConversation("/ws/chat") { incoming, outgoing ->
+                            val job = launch {
+                                launch {
+                                    for (frame in incoming) {
+                                        if (frame is Frame.Text) {
+                                            val text = frame.readText()
+                                            println(text)
+                                        }
+                                    }
+                                }
+                                launch {
+                                    while (true) {
+                                        outgoing.send(
+                                            Frame.Text(
+                                                createMassage(
+                                                    clientNumber = clientNumber,
+                                                    text = UUID.randomUUID().toString()
+                                                )
+                                            )
+                                        )
+                                        delay(Random.nextLong(100L, 200L))
+                                    }
+                                }
+                            }
+                            delay(clientNumber * 500L)
+                            job.cancelAndJoin()
+                        }
+                    }
+                }
             }
         }
     }
