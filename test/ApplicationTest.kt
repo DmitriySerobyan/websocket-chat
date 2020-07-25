@@ -1,65 +1,34 @@
-package ru.serobyan
-
-import io.ktor.application.*
-import io.ktor.response.*
-import io.ktor.request.*
-import io.ktor.routing.*
-import io.ktor.http.*
-import io.ktor.sessions.*
-import io.ktor.features.*
-import org.slf4j.event.*
-import io.ktor.client.*
-import io.ktor.client.engine.apache.*
-import io.ktor.client.features.*
-import io.ktor.client.features.json.*
-import io.ktor.client.request.*
-import kotlinx.coroutines.*
-import io.ktor.client.engine.cio.*
-import io.ktor.websocket.*
-import io.ktor.http.cio.websocket.*
-import java.time.*
-import io.ktor.client.features.websocket.*
-import io.ktor.client.features.websocket.WebSockets
+import io.kotest.core.spec.style.StringSpec
+import io.kotest.matchers.shouldBe
+import io.ktor.http.HttpMethod
+import io.ktor.http.HttpStatusCode
 import io.ktor.http.cio.websocket.Frame
-import kotlinx.coroutines.channels.*
-import io.ktor.client.features.logging.*
-import kotlin.test.*
-import io.ktor.server.testing.*
-import io.ktor.client.engine.mock.*
-import kotlinx.coroutines.io.*
-import io.ktor.client.call.*
+import io.ktor.http.cio.websocket.readText
+import io.ktor.server.testing.handleRequest
+import io.ktor.server.testing.withTestApplication
 
-class ApplicationTest {
-    @Test
-    fun testRoot() {
-        withTestApplication({ module(testing = true) }) {
+class ApplicationTest : StringSpec({
+
+    "root" {
+        withTestApplication({ module() }) {
             handleRequest(HttpMethod.Get, "/").apply {
-                assertEquals(HttpStatusCode.OK, response.status())
-                assertEquals("HELLO WORLD!", response.content)
+                response.status() shouldBe HttpStatusCode.OK
+                response.content shouldBe "HELLO WORLD!"
             }
         }
     }
 
-    @Test
-    fun testClientMock() {
-        runBlocking {
-            val client = HttpClient(MockEngine) {
-                engine {
-                    addHandler { request -> 
-                        when (request.url.fullPath) {
-                            "/" -> respond(
-                                ByteReadChannel(byteArrayOf(1, 2, 3)),
-                                headers = headersOf("X-MyHeader", "MyValue")
-                            )
-                            else -> respond("Not Found ${request.url.encodedPath}", HttpStatusCode.NotFound)
-                        }
-                    }
+    "ws echo" {
+        withTestApplication({ module() }) {
+            handleWebSocketConversation("/myws/echo") { incoming, outgoing ->
+                val textMessages = listOf("111", "222")
+                (incoming.receive() as Frame.Text).readText() shouldBe "Hi from server"
+                for (msg in textMessages) {
+                    outgoing.send(Frame.Text(msg))
+                    (incoming.receive() as Frame.Text).readText() shouldBe "Client said: $msg"
                 }
-                expectSuccess = false
             }
-            assertEquals(byteArrayOf(1, 2, 3).toList(), client.get<ByteArray>("/").toList())
-            assertEquals("MyValue", client.call("/").response.headers["X-MyHeader"])
-            assertEquals("Not Found other/path", client.get<String>("/other/path"))
         }
     }
-}
+
+})
