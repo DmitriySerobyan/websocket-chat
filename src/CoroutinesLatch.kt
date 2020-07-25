@@ -11,6 +11,7 @@ class CoroutinesLatch(
     private val permissionToContinue = Channel<Unit>()
 
     init {
+        require(count > 0) { "Count must be greater than 0" }
         GlobalScope.launch {
             waitUntilAllJoin()
             allowAllContinue()
