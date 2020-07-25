@@ -1,6 +1,5 @@
 import io.ktor.client.HttpClient
 import io.ktor.client.engine.cio.CIO
-import io.ktor.client.features.HttpTimeout
 import io.ktor.client.features.json.GsonSerializer
 import io.ktor.client.features.json.JsonFeature
 import io.ktor.client.features.logging.LogLevel
@@ -25,7 +24,7 @@ fun main() {
             }
             install(WebSockets)
         }
-        client.ws(method = HttpMethod.Get, host = "127.0.0.1", port = 8080, path = "/myws/echo") {
+        client.ws(method = HttpMethod.Get, host = "127.0.0.1", port = 8080, path = "/ws/echo") {
             send(Frame.Text("Hello World"))
             for (message in incoming.map { it as? Frame.Text }.filterNotNull()) {
                 println("Server said: " + message.readText())
