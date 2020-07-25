@@ -1,4 +1,7 @@
 import io.kotest.core.spec.style.StringSpec
+import io.kotest.matchers.collections.shouldHaveSize
+import io.kotest.matchers.ints.shouldBeGreaterThan
+import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.runBlocking
@@ -8,7 +11,7 @@ import kotlin.random.Random
 class CoroutinesLatchTest : StringSpec({
 
     "launch" {
-        runBlocking {
+        runBlocking(Dispatchers.Default) {
             val childrenCount = 5
             val latch = CoroutinesLatch(childrenCount)
             val events = Collections.synchronizedList(mutableListOf<String>())
@@ -27,11 +30,25 @@ class CoroutinesLatchTest : StringSpec({
             events.add("parent job join")
             parentJob.join()
             events.add("parent job finish")
-            events.forEach { event ->
-                println(event)
+
+            events.forEach { event -> println(event) }
+
+            events shouldHaveSize 13
+
+            val childrenEvents = events.filter { "child job" in it }
+            val eventsChildJobStartOrder = childrenEvents.withIndex()
+                .filter { "start" in it.value }
+                .map { it.index }
+            val eventsChildJobFinishOrder = childrenEvents.withIndex()
+                .filter { "finish" in it.value }
+                .map { it.index }
+
+            eventsChildJobStartOrder.forEach { childEventJobStartOrder ->
+                eventsChildJobFinishOrder.forEach { childEventJobFinishOrder ->
+                    childEventJobFinishOrder shouldBeGreaterThan childEventJobStartOrder
+                }
             }
         }
     }
-
 
 })
