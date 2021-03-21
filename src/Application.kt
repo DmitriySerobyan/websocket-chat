@@ -31,7 +31,7 @@ fun Application.module() {
         masking = false
     }
 
-    val wsConnections = Collections.synchronizedSet(LinkedHashSet<DefaultWebSocketSession>())
+    val clients = Collections.synchronizedSet(LinkedHashSet<DefaultWebSocketSession>())
 
     routing {
         get("/") {
@@ -39,31 +39,33 @@ fun Application.module() {
         }
 
         webSocket("/ws/echo") {
-            send(Frame.Text("Hi from server"))
+            outgoing.send(Frame.Text("Hi from server"))
             while (true) {
                 val frame = incoming.receive()
                 if (frame is Frame.Text) {
-                    send(Frame.Text("You said: " + frame.readText()))
+                    outgoing.send(Frame.Text("You said: ${frame.readText()}"))
                 }
             }
         }
 
         webSocket("/ws/chat") {
-            wsConnections += this
+            clients += this
             try {
-                send(Frame.Text("you joined"))
-                for (wsConnection in wsConnections.toList()) {
-                    if (wsConnection != this) {
-                        wsConnection.outgoing.send(Frame.Text("client joined"))
+                println("Client joined the chat")
+                outgoing.send(Frame.Text("You joined the chat"))
+                for (client in clients.toList()) {
+                    if (client != this) {
+                        client.outgoing.send(Frame.Text("Client joined the chat"))
                     }
                 }
                 while (true) {
                     when (val frame = incoming.receive()) {
                         is Frame.Text -> {
-                            val text = frame.readText()
-                            for (wsConnection in wsConnections.toList()) {
+                            val message = frame.readText()
+                            println("Receive: $message")
+                            for (wsConnection in clients.toList()) {
                                 if (wsConnection != this) {
-                                    wsConnection.outgoing.send(Frame.Text(text))
+                                    wsConnection.outgoing.send(Frame.Text(message))
                                 }
                             }
                         }
@@ -72,9 +74,10 @@ fun Application.module() {
             } catch (_: CancellationException) {
             } catch (_: ClosedReceiveChannelException) {
             } finally {
-                wsConnections -= this
-                for (wsConnection in wsConnections.toList()) {
-                    wsConnection.outgoing.send(Frame.Text("client left"))
+                clients -= this
+                println("Client left the chat")
+                for (wsConnection in clients.toList()) {
+                    wsConnection.outgoing.send(Frame.Text("Client left the chat"))
                 }
             }
         }
